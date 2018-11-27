@@ -22,13 +22,13 @@ class Fluid:
         self.velocity = np.zeros((size, size, 2))
         self.forces = np.zeros((size, size, 2))
 
-        self.density = np.zeros(self.shape)
-        self.sources = np.zeros(self.shape)
+        self.density = np.zeros(self.shape+(3,))
+        self.sources = np.zeros(self.shape+(3,))
 
         self.position_indices = generate_position_indices(self.shape)
 
     def plot(self):
-        plt.imshow(self.density)
+        plt.imshow(self.density[:,:,0])
         plt.colorbar()
         plt.quiver(self.velocity[:, :, 0], -self.velocity[:, :, 1], )
         plt.show()
@@ -79,7 +79,7 @@ class Fluid:
 
         # Reshape alpha from (n,n,2) --> (n,n,2,2)
         if len(to_advect.shape) == 3:
-            alpha = np.transpose(np.array([alpha, alpha]), [1, 2, 3, 0])
+            alpha = np.transpose(np.array([alpha]*to_advect.shape[2]), [1, 2, 3, 0])
 
         # We need to interpolate between 4 cells: example in 2D with 2^2 = 4 cells
         #   |------|-------|
@@ -158,7 +158,7 @@ class Fluid:
 
         self.density = self.add_sources(self.density, self.sources)
         self.density = self.advect(self.density)
-        self.density = self.diffuse(self.density)
+        #self.density = self.diffuse(self.density)
         self.density = self.dissipate(self.density)
 
     @staticmethod

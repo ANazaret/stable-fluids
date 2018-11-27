@@ -14,13 +14,17 @@ class EventHandler:
         self.left_button_is_down = False
         self.right_button_is_down = False
 
+        self.color = 0
+
     def handle_event(self, event: pygame.event.EventType):
         if event.type == MOUSEBUTTONDOWN:
             if event.button == 1:
                 self.left_button_is_down = True
                 self.fluid.sources[event.pos[0] // self.cell_in_pixel,
-                                   event.pos[1] // self.cell_in_pixel] += 1
+                                   event.pos[1] // self.cell_in_pixel,
+                                   self.color] += 1
             elif event.button == 3:
+                print("Right is down")
                 self.right_button_is_down = True
 
         elif event.type == MOUSEBUTTONUP:
@@ -42,6 +46,8 @@ class EventHandler:
                 plt.quiver(self.fluid.forces[:, :, 0], -self.fluid.forces[:, :, 1], units='xy', scale=5)
                 plt.show()
 
+            elif event.key == K_c:
+                self.color = (self.color + 1) % 3
             elif event.key == K_UP:
                 self.fluid.viscosity *= 1.5
             elif event.key == K_DOWN:
