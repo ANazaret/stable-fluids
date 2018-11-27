@@ -14,21 +14,23 @@ class Fluid:
 
         # ----- Simulation constants -------
         self.viscosity = 0.01
-        self.diffusion = 10
-        self.dissipation = 10
+        self.dissipation = 0.0
 
         self.dt = 0.01
         # ----------------------------------
 
         self.velocity = np.zeros((size, size, 2))
+        self.forces = np.zeros((size, size, 2))
+
         self.density = np.zeros(self.shape)
+        self.sources = np.zeros(self.shape)
 
         self.position_indices = generate_position_indices(self.shape)
 
     def plot(self):
-        plt.imshow(self.density, origin='lower')
+        plt.imshow(self.density)
         plt.colorbar()
-        plt.quiver(self.velocity[:, :, 0], self.velocity[:, :, 1])
+        plt.quiver(self.velocity[:, :, 0], -self.velocity[:, :, 1], )
         plt.show()
 
     @staticmethod
@@ -39,11 +41,11 @@ class Fluid:
         For corners take mean of the two adjacent
         """
 
-        to_set[0, 1:-1] = -to_set[1, 1:-1]
-        to_set[-1, 1:-1] = -to_set[-2, 1:-1]
+        to_set[0, 1:-1, 0] = -to_set[1, 1:-1, 0]
+        to_set[-1, 1:-1, 0] = -to_set[-2, 1:-1, 0]
 
-        to_set[1:-1, 0] = -to_set[1:-1, 1]
-        to_set[1:-1, -1] = -to_set[1:-1, -2]
+        to_set[1:-1, 0, 1] = -to_set[1:-1, 1, 1]
+        to_set[1:-1, -1, 1] = -to_set[1:-1, -2, 1]
 
         to_set[0, 0] = (to_set[0, 1] + to_set[1, 0]) / 2
         to_set[-1, 0] = (to_set[-1, 1] + to_set[-2, 0]) / 2
@@ -64,8 +66,7 @@ class Fluid:
         """
 
         positions = self.position_indices
-        old_positions = positions - self.dt * (np.prod(self.shape)) ** 0.5 * self.velocity
-        # Does dt need to be timed by n_cells ?
+        old_positions = positions - self.dt * self.size * self.velocity
 
         # Clip coordinates
         old_positions[:, :, 0] = np.clip(old_positions[:, :, 0], 0.5, self.shape[0] - 1.5)
@@ -146,12 +147,20 @@ class Fluid:
         self.set_boundaries(projected)
         return projected
 
+    def dissipate(self, density):
+        return density / (1 + self.dt * self.dissipation)
+
     def run(self):
+        self.velocity = self.add_sources(self.velocity, self.forces)
         self.velocity = self.advect(self.velocity)
         self.velocity = self.diffuse(self.velocity)
         self.velocity = self.project(self.velocity)
 
+        self.density = self.add_sources(self.density, self.sources)
         self.density = self.advect(self.density)
         self.density = self.diffuse(self.density)
+        self.density = self.dissipate(self.density)
 
-        self.density *= 1 / (1 + self.dt * self.dissipation)
+    @staticmethod
+    def add_sources(field, sources):
+        return field + sources
