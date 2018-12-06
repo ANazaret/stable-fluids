@@ -14,9 +14,9 @@ if __name__ == '__main__':
     fluid = Fluid(fluid_size)
 
     
-    fluid.sources[10:12, 10:12, 0] = 1
+    fluid.sources[10:12, 10:12, 0] = 100
     fluid.forces[10, 10] = [2, 2]
-    fluid.sources[80:82, 80:82, 1] = 1
+    fluid.sources[80:82, 80:82, 1] = 100
     fluid.forces[10, 10] = [2, 2]
 
     fluid.velocity[:, :, 0].fill(5 * 0.4142)
@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
     #image = mpimg.imread('apr.png')
     #fluid.density = image[:,:,:3].transpose([1,0,2])
-    fluid.viscosity = 0.1
+    fluid.viscosity = 0.01
     fluid.density[0,:] = 0
     fluid.density[-1, :] = 0
     fluid.density[:,0] = 0

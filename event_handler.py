@@ -2,7 +2,7 @@ import pygame
 from pygame.locals import *
 
 import matplotlib.pyplot as plt
-
+import numpy as np
 
 class EventHandler:
 
@@ -22,7 +22,7 @@ class EventHandler:
                 self.left_button_is_down = True
                 self.fluid.sources[event.pos[0] // self.cell_in_pixel,
                                    event.pos[1] // self.cell_in_pixel,
-                                   self.color] += 1
+                                   self.color] += 100
             elif event.button == 3:
                 print("Right is down")
                 self.right_button_is_down = True
@@ -36,7 +36,7 @@ class EventHandler:
         elif event.type == MOUSEMOTION:
             if self.right_button_is_down:
                 self.fluid.forces[event.pos[0] // self.cell_in_pixel,
-                                  event.pos[1] // self.cell_in_pixel] += event.rel
+                                  event.pos[1] // self.cell_in_pixel] += np.array(event.rel)*10
 
         elif event.type == KEYDOWN:
             if event.key == K_v:

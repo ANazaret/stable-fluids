@@ -13,7 +13,7 @@ class Fluid:
         self.shape = (size, size)
 
         # ----- Simulation constants -------
-        self.viscosity = 0.01
+        self.viscosity = 0.005
         self.dissipation = 0.0
 
         self.dt = 0.01
@@ -147,7 +147,7 @@ class Fluid:
                 to_project[:-2, 1:-1, 0] - to_project[2:, 1:-1, 0] +
                 to_project[1:-1, :-2, 1] - to_project[1:-1, 2:, 1]) / self.size
 
-        # Boundaries are already set to 0 .. TODO
+        self.continuity_boundaries(divergence)
 
         diffused_div = np.zeros_like(divergence)
         for _ in range(n_steps):
@@ -156,6 +156,8 @@ class Fluid:
                     diffused_div[1:-1, 2:] +
                     diffused_div[2:, 1:-1] +
                     diffused_div[1:-1, :-2])) / 4
+
+            self.continuity_boundaries(diffused_div)
 
         # Update velocities
         projected = np.zeros_like(to_project)
@@ -181,6 +183,5 @@ class Fluid:
         self.density = self.diffuse(self.density, self.continuity_boundaries)
         #self.density = self.dissipate(self.density)
 
-    @staticmethod
-    def add_sources(field, sources):
-        return field + sources
+    def add_sources(self, field, sources):
+        return field + sources*self.dt
