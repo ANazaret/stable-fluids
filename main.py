@@ -13,7 +13,7 @@ CELL_IN_PIXEL = window_size // fluid_size
 if __name__ == '__main__':
     fluid = Fluid(fluid_size)
 
-    """
+    
     fluid.sources[10:12, 10:12, 0] = 1
     fluid.forces[10, 10] = [2, 2]
     fluid.sources[80:82, 80:82, 1] = 1
@@ -23,10 +23,10 @@ if __name__ == '__main__':
     fluid.velocity[:, :, 1].fill(5 * 0.4142)
 
     fluid.velocity[20, 20] = [-2, 2]
-    """
+    	
 
-    image = mpimg.imread('apr.png')
-    fluid.density = image[:,:,:3].transpose([1,0,2])
+    #image = mpimg.imread('apr.png')
+    #fluid.density = image[:,:,:3].transpose([1,0,2])
     fluid.viscosity = 0.1
     fluid.density[0,:] = 0
     fluid.density[-1, :] = 0

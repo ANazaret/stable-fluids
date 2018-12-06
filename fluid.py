@@ -34,7 +34,7 @@ class Fluid:
         plt.show()
 
     @staticmethod
-    def set_boundaries(to_set):
+    def mirror_boundaries(to_set):
         """
         For a vector field, we want the boundary to exercise a reaction force (opposite to the next cell)
         For strict edges, take the opposite value of next cell
@@ -52,6 +52,22 @@ class Fluid:
         to_set[0, -1] = (to_set[0, -2] + to_set[1, -1]) / 2
         to_set[-1, -1] = (to_set[-1, -2] + to_set[-2, -1]) / 2
 
+    @staticmethod
+    def continuity_boundaries(to_set):
+        """
+
+        """
+        to_set[0, :]  = to_set[1, :]
+        to_set[-1, :] = to_set[-2, :]
+
+        to_set[:, 0]  = to_set[:, 1]
+        to_set[:, -1] = to_set[:, -2]
+
+        to_set[0, 0] = (to_set[0, 1] + to_set[1, 0]) / 2
+        to_set[-1, 0] = (to_set[-1, 1] + to_set[-2, 0]) / 2
+        to_set[0, -1] = (to_set[0, -2] + to_set[1, -1]) / 2
+        to_set[-1, -1] = (to_set[-1, -2] + to_set[-2, -1]) / 2
+
     """
     #############################################################################
     Core methods: 
@@ -60,9 +76,9 @@ class Fluid:
         - 
     """
 
-    def advect(self, to_advect):
+    def advect(self, to_advect, continuity=lambda x:None):
         """
-        Advects an array given velocity, both array shapes must match the PhysicEngine n_cell config
+        Advects an array given velocity
         """
 
         positions = self.position_indices
@@ -77,7 +93,7 @@ class Fluid:
 
         alpha = 1 - (old_positions - old_positions_int)
 
-        # Reshape alpha from (n,n,2) --> (n,n,2,2)
+        # Reshape alpha from (n,n,k) --> (n,n,k,k)
         if len(to_advect.shape) == 3:
             alpha = np.transpose(np.array([alpha]*to_advect.shape[2]), [1, 2, 3, 0])
 
@@ -99,9 +115,11 @@ class Fluid:
             contribution = to_advect[old_positions_int[:, :, 0] + i, old_positions_int[:, :, 1] + j]
             advected += contribution * f(alpha[:, :, 0], i) * f(alpha[:, :, 1], j)
 
+        continuity(advected)
+
         return advected
 
-    def diffuse(self, to_diffuse, n_steps: int = 20):
+    def diffuse(self, to_diffuse, continuity=lambda x:None, n_steps: int = 20):
         alpha = self.dt * self.viscosity * np.prod(self.shape)
 
         diffused = np.zeros_like(to_diffuse)
@@ -112,7 +130,9 @@ class Fluid:
                     diffused[1:-1, 2:] +
                     diffused[2:, 1:-1] +
                     diffused[1:-1, :-2])) / (1 + 4 * alpha)
-            # TODO check boundaries
+
+            continuity(diffused)
+            #self.continuity_boundaries(diffused)
 
         return diffused
 
@@ -144,7 +164,7 @@ class Fluid:
         projected[1:-1, 1:-1, 1] = to_project[1:-1, 1:-1, 1] - 0.5 * self.size * (
                 diffused_div[1:-1, 2:] - diffused_div[1:-1, :-2])
 
-        self.set_boundaries(projected)
+        self.mirror_boundaries(projected)
         return projected
 
     def dissipate(self, density):
@@ -152,14 +172,14 @@ class Fluid:
 
     def run(self):
         self.velocity = self.add_sources(self.velocity, self.forces)
-        self.velocity = self.advect(self.velocity)
-        self.velocity = self.diffuse(self.velocity)
+        self.velocity = self.advect(self.velocity, self.mirror_boundaries)
+        self.velocity = self.diffuse(self.velocity, self.mirror_boundaries)
         self.velocity = self.project(self.velocity)
 
         self.density = self.add_sources(self.density, self.sources)
-        self.density = self.advect(self.density)
-        #self.density = self.diffuse(self.density)
-        self.density = self.dissipate(self.density)
+        self.density = self.advect(self.density, self.continuity_boundaries)
+        self.density = self.diffuse(self.density, self.continuity_boundaries)
+        #self.density = self.dissipate(self.density)
 
     @staticmethod
     def add_sources(field, sources):
