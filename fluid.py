@@ -76,39 +76,19 @@ class Fluid:
         to_set[:, 0] = to_set[:, 1]
         to_set[:, -1] = to_set[:, -2]
 
-        to_set[0, 0] = (to_set[0, 1] + to_set[1, 0]) / 2
-        to_set[-1, 0] = (to_set[-1, 1] + to_set[-2, 0]) / 2
-        to_set[0, -1] = (to_set[0, -2] + to_set[1, -1]) / 2
-        to_set[-1, -1] = (to_set[-1, -2] + to_set[-2, -1]) / 2
-
-    """
-    #############################################################################
-    Core methods: 
-        - Advection
-        - Diffusion
-        - 
-    """
-
-    def advect(self, to_advect, continuity=lambda x: None):
-        """
-        Advects an array given velocity
-        """
-
-        positions = self.position_indices
-        old_positions = positions - self.dt * self.size * self.velocity
-
+    def interpolate(self, positions, original):
         # Interpolation
-        old_positions_int = old_positions.astype(int)
+        positions_int = positions.astype(int)
 
-        # Clip coordinates
-        old_positions_int[:, :, 0] = np.clip(old_positions_int[:, :, 0], 0, self.shape[0] - 2)
-        old_positions_int[:, :, 1] = np.clip(old_positions_int[:, :, 1], 0.5, self.shape[1] - 2)
+        # Clip coordinates to lower left cell id
+        positions_int[:, :, 0] = np.clip(positions_int[:, :, 0], 0, self.shape[0] - 2)
+        positions_int[:, :, 1] = np.clip(positions_int[:, :, 1], 0, self.shape[1] - 2)
 
-        alpha = np.clip(1 - (old_positions - old_positions_int), 0, 1)
+        alpha = np.clip(1 - (positions - positions_int), 0, 1)
 
-        # Reshape alpha from (n,n,k) --> (n,n,k,k)
-        if len(to_advect.shape) == 3:
-            alpha = np.transpose(np.array([alpha] * to_advect.shape[2]), [1, 2, 3, 0])
+        # Reshape alpha from (n,n,k) --> (n,n,k,k) if necessary (numpy dimension error)
+        if len(original.shape) == 3:
+            alpha = np.transpose(np.array([alpha] * original.shape[2]), [1, 2, 3, 0])
 
         # We need to interpolate between 4 cells: example in 2D with 2^2 = 4 cells
         #   |------|-------|
@@ -122,17 +102,37 @@ class Fluid:
         #   |------|-------|
         # We know the value in the middle of each cell, 2d interpolation for X
 
-        advected = np.zeros(to_advect.shape)
+        interpolated = np.zeros(original.shape)
         f = lambda x, y: 1 - x if y else x
         for i, j in itertools.product([0, 1], repeat=2):
-            contribution = to_advect[old_positions_int[:, :, 0] + i, old_positions_int[:, :, 1] + j]
-            advected += contribution * f(alpha[:, :, 0], i) * f(alpha[:, :, 1], j)
+            contribution = original[positions_int[:, :, 0] + i, positions_int[:, :, 1] + j]
+            interpolated += contribution * f(alpha[:, :, 0], i) * f(alpha[:, :, 1], j)
+
+        return interpolated
+
+    def advect(self, to_advect, continuity=lambda x: None):
+        """
+        Advects an array given velocity
+        """
+
+        positions = self.position_indices
+
+        # ##############  Classic backtrack ############
+        # old_positions = positions - self.dt * self.size * self.velocity
+        # advected = self.interpolate(old_positions, to_advect)
+        # ##############################################
+
+        # Runge Kutta 2nd order
+        middle_velocity = self.interpolate(positions - self.dt * self.size * self.velocity / 2.,
+                                           self.velocity)
+        old_positions = positions - self.dt * self.size * middle_velocity
+        advected = self.interpolate(old_positions, to_advect)
 
         continuity(advected)
 
         return advected
 
-    def diffuse(self, to_diffuse, continuity=lambda x: None, n_steps: int = 20):
+    def diffuse(self, to_diffuse, continuity=lambda x: None, n_steps: int = 10):
         alpha = self.dt * self.viscosity * np.prod(self.shape)
 
         diffused = np.zeros_like(to_diffuse)
@@ -148,7 +148,7 @@ class Fluid:
 
         return diffused
 
-    def project(self, to_project, n_steps: int = 20):
+    def project(self, to_project, n_steps: int = 15):
         """
         Project the velocity field onto a mass conserving field
         (ie) with div F = 0
