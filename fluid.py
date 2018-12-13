@@ -22,13 +22,13 @@ class Fluid:
         self.velocity = np.zeros((size, size, 2))
         self.forces = np.zeros((size, size, 2))
 
-        self.density = np.zeros(self.shape+(3,))
-        self.sources = np.zeros(self.shape+(3,))
+        self.density = np.zeros(self.shape + (3,))
+        self.sources = np.zeros(self.shape + (3,))
 
         self.position_indices = generate_position_indices(self.shape)
 
     def plot(self):
-        plt.imshow(self.density[:,:,0])
+        plt.imshow(self.density[:, :, 0])
         plt.colorbar()
         plt.quiver(self.velocity[:, :, 0], -self.velocity[:, :, 1], )
         plt.show()
@@ -57,10 +57,10 @@ class Fluid:
         """
 
         """
-        to_set[0, :]  = to_set[1, :]
+        to_set[0, :] = to_set[1, :]
         to_set[-1, :] = to_set[-2, :]
 
-        to_set[:, 0]  = to_set[:, 1]
+        to_set[:, 0] = to_set[:, 1]
         to_set[:, -1] = to_set[:, -2]
 
         to_set[0, 0] = (to_set[0, 1] + to_set[1, 0]) / 2
@@ -76,7 +76,7 @@ class Fluid:
         - 
     """
 
-    def advect(self, to_advect, continuity=lambda x:None):
+    def advect(self, to_advect, continuity=lambda x: None):
         """
         Advects an array given velocity
         """
@@ -84,18 +84,18 @@ class Fluid:
         positions = self.position_indices
         old_positions = positions - self.dt * self.size * self.velocity
 
-        # Clip coordinates
-        old_positions[:, :, 0] = np.clip(old_positions[:, :, 0], 0.5, self.shape[0] - 1.5)
-        old_positions[:, :, 1] = np.clip(old_positions[:, :, 1], 0.5, self.shape[1] - 1.5)
-
         # Interpolation
         old_positions_int = old_positions.astype(int)
 
-        alpha = 1 - (old_positions - old_positions_int)
+        # Clip coordinates
+        old_positions_int[:, :, 0] = np.clip(old_positions_int[:, :, 0], 0, self.shape[0] - 2)
+        old_positions_int[:, :, 1] = np.clip(old_positions_int[:, :, 1], 0.5, self.shape[1] - 2)
+
+        alpha = np.clip(1 - (old_positions - old_positions_int), 0, 1)
 
         # Reshape alpha from (n,n,k) --> (n,n,k,k)
         if len(to_advect.shape) == 3:
-            alpha = np.transpose(np.array([alpha]*to_advect.shape[2]), [1, 2, 3, 0])
+            alpha = np.transpose(np.array([alpha] * to_advect.shape[2]), [1, 2, 3, 0])
 
         # We need to interpolate between 4 cells: example in 2D with 2^2 = 4 cells
         #   |------|-------|
@@ -119,7 +119,7 @@ class Fluid:
 
         return advected
 
-    def diffuse(self, to_diffuse, continuity=lambda x:None, n_steps: int = 20):
+    def diffuse(self, to_diffuse, continuity=lambda x: None, n_steps: int = 20):
         alpha = self.dt * self.viscosity * np.prod(self.shape)
 
         diffused = np.zeros_like(to_diffuse)
@@ -132,7 +132,7 @@ class Fluid:
                     diffused[1:-1, :-2])) / (1 + 4 * alpha)
 
             continuity(diffused)
-            #self.continuity_boundaries(diffused)
+            # self.continuity_boundaries(diffused)
 
         return diffused
 
@@ -181,7 +181,7 @@ class Fluid:
         self.density = self.add_sources(self.density, self.sources)
         self.density = self.advect(self.density, self.continuity_boundaries)
         self.density = self.diffuse(self.density, self.continuity_boundaries)
-        #self.density = self.dissipate(self.density)
+        # self.density = self.dissipate(self.density)
 
     def add_sources(self, field, sources):
-        return field + sources*self.dt
+        return field + sources * self.dt
