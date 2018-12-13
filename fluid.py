@@ -27,6 +27,8 @@ class Fluid:
 
         self.position_indices = generate_position_indices(self.shape)
 
+        self.velocity_boundaries = self.zero_normal_boundaries
+
     def plot(self):
         plt.imshow(self.density[:, :, 0])
         plt.colorbar()
@@ -38,7 +40,7 @@ class Fluid:
         """
         For a vector field, we want the boundary to exercise a reaction force (opposite to the next cell)
         For strict edges, take the opposite value of next cell
-        For corners take mean of the two adjacent
+        For corner, we could average, but it not really important
         """
 
         to_set[0, 1:-1, 0] = -to_set[1, 1:-1, 0]
@@ -47,10 +49,21 @@ class Fluid:
         to_set[1:-1, 0, 1] = -to_set[1:-1, 1, 1]
         to_set[1:-1, -1, 1] = -to_set[1:-1, -2, 1]
 
-        to_set[0, 0] = (to_set[0, 1] + to_set[1, 0]) / 2
-        to_set[-1, 0] = (to_set[-1, 1] + to_set[-2, 0]) / 2
-        to_set[0, -1] = (to_set[0, -2] + to_set[1, -1]) / 2
-        to_set[-1, -1] = (to_set[-1, -2] + to_set[-2, -1]) / 2
+    @staticmethod
+    def zero_normal_boundaries(to_set):
+        """
+        For a vector field, we want the boundary to exercise a reaction force (opposite to the next cell)
+        For strict edges, take the opposite value of next cell
+        For corner, we could average, but it is not really important
+        """
+
+        Fluid.continuity_boundaries(to_set)
+        to_set[0, 1:-1, 0] = 0
+        to_set[-1, 1:-1, 0] = 0
+
+
+        to_set[1:-1, 0, 1] = 0
+        to_set[1:-1, -1, 1] = 0
 
     @staticmethod
     def continuity_boundaries(to_set):
@@ -132,7 +145,6 @@ class Fluid:
                     diffused[1:-1, :-2])) / (1 + 4 * alpha)
 
             continuity(diffused)
-            # self.continuity_boundaries(diffused)
 
         return diffused
 
@@ -146,7 +158,6 @@ class Fluid:
         divergence[1:-1, 1:-1] = 0.5 * (
                 to_project[:-2, 1:-1, 0] - to_project[2:, 1:-1, 0] +
                 to_project[1:-1, :-2, 1] - to_project[1:-1, 2:, 1]) / self.size
-
         self.continuity_boundaries(divergence)
 
         diffused_div = np.zeros_like(divergence)
@@ -174,8 +185,8 @@ class Fluid:
 
     def run(self):
         self.velocity = self.add_sources(self.velocity, self.forces)
-        self.velocity = self.advect(self.velocity, self.mirror_boundaries)
-        self.velocity = self.diffuse(self.velocity, self.mirror_boundaries)
+        self.velocity = self.advect(self.velocity, self.velocity_boundaries)
+        self.velocity = self.diffuse(self.velocity, self.velocity_boundaries)
         self.velocity = self.project(self.velocity)
 
         self.density = self.add_sources(self.density, self.sources)
