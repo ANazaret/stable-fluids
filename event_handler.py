@@ -15,6 +15,8 @@ class EventHandler:
         self.left_button_is_down = False
         self.right_button_is_down = False
 
+        self.edition = False
+
         self.color = 0
 
     def handle_event(self, event: pygame.event.EventType):
@@ -33,6 +35,8 @@ class EventHandler:
                 self.left_button_is_down = False
             elif event.button == 3:
                 self.right_button_is_down = False
+                if self.edition:
+                    self.fluid.forces *= 0
 
         elif event.type == MOUSEMOTION:
             if self.right_button_is_down:
@@ -55,6 +59,8 @@ class EventHandler:
                 self.fluid.viscosity /= 1.5
             elif event.key == K_r:
                 self.fluid.forces *= 0
+            elif event.key == K_e:
+                self.edition ^= True
             elif event.key == K_s:
                 self.fluid.velocity_boundaries = (
                     self.fluid.continuity_boundaries if self.fluid.velocity_boundaries == self.fluid.mirror_boundaries

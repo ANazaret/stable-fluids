@@ -27,7 +27,13 @@ class Fluid:
 
         self.position_indices = generate_position_indices(self.shape)
 
-        self.velocity_boundaries = self.zero_normal_boundaries
+        self.velocity_boundaries = self.mirror_boundaries
+
+        self.particles = np.array([])
+        self.radius = 2.5
+        self.marching_grid = 200
+        self.marching_step = 5
+        self.edges = []
 
     def plot(self):
         plt.imshow(self.density[:, :, 0])
@@ -61,7 +67,6 @@ class Fluid:
         to_set[0, 1:-1, 0] = 0
         to_set[-1, 1:-1, 0] = 0
 
-
         to_set[1:-1, 0, 1] = 0
         to_set[1:-1, -1, 1] = 0
 
@@ -81,8 +86,7 @@ class Fluid:
         positions_int = positions.astype(int)
 
         # Clip coordinates to lower left cell id
-        positions_int[:, :, 0] = np.clip(positions_int[:, :, 0], 0, self.shape[0] - 2)
-        positions_int[:, :, 1] = np.clip(positions_int[:, :, 1], 0, self.shape[1] - 2)
+        positions_int = np.clip(positions_int, 0, self.size - 2)
 
         alpha = np.clip(1 - (positions - positions_int), 0, 1)
 
@@ -110,6 +114,23 @@ class Fluid:
 
         return interpolated
 
+    def interpolate_list(self, positions, original):
+        # Interpolation
+        positions_int = positions.astype(int)
+
+        # Clip coordinates to lower left cell id
+        positions_int = np.clip(positions_int, 0, self.size - 2)
+        alpha = np.clip(1 - (positions - positions_int), 0, 1)
+
+        interpolated = np.zeros(alpha.shape)
+        alpha = np.transpose(np.array([alpha] * original.shape[2]), [1, 2, 0])
+        f = lambda x, y: 1 - x if y else x
+        for i, j in itertools.product([0, 1], repeat=2):
+            contribution = original[positions_int[:, 0] + i, positions_int[:, 1] + j]
+            interpolated += contribution * f(alpha[:, 0], i) * f(alpha[:, 1], j)
+
+        return interpolated
+
     def advect(self, to_advect, continuity=lambda x: None):
         """
         Advects an array given velocity
@@ -134,7 +155,7 @@ class Fluid:
 
     def diffuse(self, to_diffuse, continuity=lambda x: None, n_steps: int = 10):
         alpha = self.dt * self.viscosity * np.prod(self.shape)
-
+        # alpha = 0.85/4
         diffused = np.zeros_like(to_diffuse)
 
         for _ in range(n_steps):
@@ -148,25 +169,25 @@ class Fluid:
 
         return diffused
 
-    def project(self, to_project, n_steps: int = 15):
+    def project(self, to_project, n_steps: int = 20):
         """
         Project the velocity field onto a mass conserving field
         (ie) with div F = 0
         (ie) incompressible ie in a cell, entering matter = leaving matter
         """
         divergence = np.zeros(to_project.shape[:-1])
-        divergence[1:-1, 1:-1] = 0.5 * (
-                to_project[:-2, 1:-1, 0] - to_project[2:, 1:-1, 0] +
-                to_project[1:-1, :-2, 1] - to_project[1:-1, 2:, 1]) / self.size
+        divergence[1:-1, 1:-1] = (
+                                         to_project[:-2, 1:-1, 0] - to_project[2:, 1:-1, 0] +
+                                         to_project[1:-1, :-2, 1] - to_project[1:-1, 2:, 1]) / (2. * self.size)
         self.continuity_boundaries(divergence)
 
         diffused_div = np.zeros_like(divergence)
         for _ in range(n_steps):
-            diffused_div[1:-1, 1:-1] = (divergence[1:-1, 1:-1] + (
-                    diffused_div[:-2, 1:-1] +
-                    diffused_div[1:-1, 2:] +
-                    diffused_div[2:, 1:-1] +
-                    diffused_div[1:-1, :-2])) / 4
+            diffused_div[1:-1, 1:-1] = (divergence[1:-1, 1:-1] +
+                                        diffused_div[:-2, 1:-1] +
+                                        diffused_div[1:-1, 2:] +
+                                        diffused_div[2:, 1:-1] +
+                                        diffused_div[1:-1, :-2]) / 4
 
             self.continuity_boundaries(diffused_div)
 
@@ -184,6 +205,9 @@ class Fluid:
         return density / (1 + self.dt * self.dissipation)
 
     def run(self):
+        if len(self.particles):
+            self.update_particles()
+
         self.velocity = self.add_sources(self.velocity, self.forces)
         self.velocity = self.advect(self.velocity, self.velocity_boundaries)
         self.velocity = self.diffuse(self.velocity, self.velocity_boundaries)
@@ -191,8 +215,78 @@ class Fluid:
 
         self.density = self.add_sources(self.density, self.sources)
         self.density = self.advect(self.density, self.continuity_boundaries)
-        self.density = self.diffuse(self.density, self.continuity_boundaries)
+        # self.density = self.diffuse(self.density, self.continuity_boundaries)
         # self.density = self.dissipate(self.density)
 
     def add_sources(self, field, sources):
         return field + sources * self.dt
+
+    def update_particles(self):
+        speed = self.interpolate_list(self.particles, self.velocity)
+        self.particles += self.dt * speed * 20
+        self.marching_square()
+
+    def get_lattice_in_circle(self, r, x, y):
+        int_x = int(x)
+        int_y = int(y)
+        int_r = int(r) + 1
+
+        res = []
+
+        for xi in range(max(int_x - int_r, 0), int_x + int_r + 1):
+            for yi in range(max(0, int_y - int_r), int_y + int_r + 1):
+                d = (xi - x) ** 2 + (yi - y) ** 2 - r ** 2
+                if d < 0:
+                    res.append([xi, yi, d])
+
+        return res
+
+    def marching_square(self):
+        grid = np.zeros((self.marching_grid, self.marching_grid))
+        grid_bool = np.zeros((self.marching_grid, self.marching_grid), dtype=bool)
+
+        ratio = self.marching_grid / self.size
+
+        # Here we don't have many particules, faster to go through each of them and validate points
+        for particule in self.particles:
+            good = np.array(self.get_lattice_in_circle(self.radius, *(particule * ratio)))
+            if len(good):
+                grid[good[:, 0].astype(int), good[:, 1].astype(int)] += good[:, 2]
+                grid_bool[good[:, 0].astype(int), good[:, 1].astype(int)] |= True
+
+        edges = []
+
+        grid_kind = np.zeros((self.marching_grid - 1, self.marching_grid - 1), dtype=int)
+        grid_kind = 8 * grid_bool[:-1, :-1] + 4 * grid_bool[1:, :-1] + 2 * grid_bool[1:, 1:] + grid_bool[:-1, 1:]
+        for i in range(self.marching_grid - 1):
+            for j in range(self.marching_grid - 1):
+                kind = grid_kind[i, j]
+                if kind == 0b1110 or kind == 0b0001:
+                    edges.append([(i, j + 0.5), (i + 0.5, j + 1)])
+                elif kind == 0b1101 or kind == 0b0010:
+                    edges.append([(i + 1, j + 0.5), (i + 0.5, j + 1)])
+                elif kind == 0b1011 or kind == 0b0100:
+                    edges.append([(i + 1, j + 0.5), (i + 0.5, j)])
+                elif kind == 0b1101 or kind == 0b0010:
+                    edges.append([(i, j + 0.5), (i + 0.5, j)])
+                elif kind == 0b1100 or kind == 0b0011:
+                    edges.append([(i, j + 0.5), (i + 1, j + 0.5)])
+                elif kind == 0b0110 or kind == 0b1001:
+                    edges.append([(i + 0.5, j), (i + 0.5, j + 1)])
+                elif kind == 0b0101:
+                    mean = grid[i:i + 2, j:j + 2].mean()
+                    if mean < 0:
+                        edges.append([(i, j + 0.5), (i + 0.5, j + 1)])
+                        edges.append([(i + 1, j + 0.5), (i + 0.5, j)])
+                    else:
+                        edges.append([(i, j + 0.5), (i + 0.5, j )])
+                        edges.append([(i + 1, j + 0.5), (i + 0.5, j+1)])
+                elif kind == 0b1010:
+                    mean = grid[i:i + 2, j:j + 2].mean()
+                    if mean > 0:
+                        edges.append([(i, j + 0.5), (i + 0.5, j + 1)])
+                        edges.append([(i + 1, j + 0.5), (i + 0.5, j)])
+                    else:
+                        edges.append([(i, j + 0.5), (i + 0.5, j )])
+                        edges.append([(i + 1, j + 0.5), (i + 0.5, j+1)])
+        self.edges = edges
